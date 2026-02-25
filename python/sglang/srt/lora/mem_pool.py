@@ -395,16 +395,28 @@ class LoRAMemoryPool:
                 ), f"LoRA buffer shape {buffer_view.shape} does not match weight shape {weight.shape}."
                 buffer_view.copy_(weight, non_blocking=True)
 
+        # Always clear the full slot before loading. This avoids stale weights
+        # lingering in dimensions outside the adapter rank.
+        for i in range(self.num_layer):
+            for k in self.A_buffer.keys():
+                self.A_buffer[k][i][buffer_id].zero_()
+            for k in self.B_buffer.keys():
+                self.B_buffer[k][i][buffer_id].zero_()
+
+        for k in self.embedding_A_buffer.keys():
+            self.embedding_A_buffer[k][buffer_id].zero_()
+        for k in self.embedding_B_buffer.keys():
+            self.embedding_B_buffer[k][buffer_id].zero_()
+
+        for k in self.lm_head_A_buffer.keys():
+            self.lm_head_A_buffer[k][buffer_id].zero_()
+        for k in self.lm_head_B_buffer.keys():
+            self.lm_head_B_buffer[k][buffer_id].zero_()
+
+        if "input_embeddings" in self.new_embeddings_buffer:
+            self.new_embeddings_buffer["input_embeddings"][buffer_id].zero_()
+
         if uid is None:
-            for i in range(self.num_layer):
-                for k in self.A_buffer.keys():
-                    self.A_buffer[k][i][buffer_id] = 0
-
-            for k in self.embedding_A_buffer.keys():
-                self.embedding_A_buffer[k][buffer_id] = 0
-
-            for k in self.lm_head_A_buffer.keys():
-                self.lm_head_A_buffer[k][buffer_id] = 0
             return
 
         assert lora_adapter is not None
@@ -580,3 +592,18 @@ class LoRAMemoryPool:
 
     def get_buffer_id(self, lora_uid: str):
         return self.uid_to_buffer_id[lora_uid]
+
+    def invalidate_lora(self, lora_uid: Optional[str]) -> bool:
+        """
+        Remove a LoRA adapter from active GPU slot mapping so it reloads fresh
+        weights from CPU cache on next use.
+
+        Returns:
+            bool: Whether the adapter was present in the pool mapping.
+        """
+        buffer_id = self.uid_to_buffer_id.pop(lora_uid, None)
+        if buffer_id is None:
+            return False
+        self.buffer_id_to_uid[buffer_id] = EMPTY_SLOT
+        self.eviction_policy.remove(lora_uid)
+        return True

@@ -1542,6 +1542,16 @@ class ModelRunner(ModelRunnerKVCacheMixin):
         logger.info(f"LoRA adapter loading from tensors completes: {lora_ref}.")
         return result
 
+    def update_lora_adapter_from_tensors(
+        self, lora_ref: LoRARef, tensors, config_dict, added_tokens_config=None
+    ):
+        logger.info(f"LoRA adapter updating from tensors starts: {lora_ref}.")
+        result = self.lora_manager.update_lora_adapter_from_tensors(
+            lora_ref, tensors, config_dict, added_tokens_config
+        )
+        logger.info(f"LoRA adapter updating from tensors completes: {lora_ref}.")
+        return result
+
     def unload_lora_adapter(self, lora_ref: LoRARef):
         """Unload a lora adapter that was previously loaded during initialization or dynamic loading."""
 

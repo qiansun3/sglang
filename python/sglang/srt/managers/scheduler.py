@@ -129,6 +129,7 @@ from sglang.srt.managers.io_struct import (
     TokenizedGenerateReqInput,
     UnloadLoRAAdapterReqInput,
     UnloadLoRAAdapterReqOutput,
+    UpdateLoRAAdapterFromTensorsReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromIPCReqInput,
@@ -1078,6 +1079,10 @@ class Scheduler(
                 (
                     LoadLoRAAdapterFromTensorsReqInput,
                     self.load_lora_adapter_from_tensors,
+                ),
+                (
+                    UpdateLoRAAdapterFromTensorsReqInput,
+                    self.update_lora_adapter_from_tensors,
                 ),
                 (UnloadLoRAAdapterReqInput, self.unload_lora_adapter),
                 (GetLoadReqInput, self.get_load),
@@ -2888,6 +2893,14 @@ class Scheduler(
         """In-place loading a new lora adapter from serialized tensors."""
 
         result = self.tp_worker.load_lora_adapter_from_tensors(recv_req)
+        return result
+
+    def update_lora_adapter_from_tensors(
+        self, recv_req: UpdateLoRAAdapterFromTensorsReqInput
+    ):
+        """In-place update of an existing lora adapter from serialized tensors."""
+
+        result = self.tp_worker.update_lora_adapter_from_tensors(recv_req)
         return result
 
     def unload_lora_adapter(

@@ -74,6 +74,8 @@ from sglang.srt.managers.io_struct import (
     SlowDownReqOutput,
     UnloadLoRAAdapterReqInput,
     UnloadLoRAAdapterReqOutput,
+    UpdateLoRAAdapterFromTensorsReqInput,
+    UpdateLoRAAdapterFromTensorsReqOutput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromDistributedReqOutput,
     UpdateWeightsFromIPCReqInput,
@@ -772,6 +774,49 @@ class TokenizerCommunicatorMixin:
                 return result
         except ValueError as e:
             return LoadLoRAAdapterFromTensorsReqOutput(
+                success=False,
+                error_message=str(e),
+            )
+
+    async def update_lora_adapter_from_tensors(
+        self: TokenizerManager,
+        obj: UpdateLoRAAdapterFromTensorsReqInput,
+        _: Optional[fastapi.Request] = None,
+    ) -> UpdateLoRAAdapterFromTensorsReqOutput:
+        self.auto_create_handle_loop()
+
+        try:
+            if not self.server_args.enable_lora:
+                raise ValueError(
+                    "LoRA is not enabled. Please set `--enable-lora` to enable LoRA."
+                )
+
+            assert (
+                self.server_args.dp_size == 1
+            ), "dp_size must be 1 for dynamic lora loading"
+            logger.info(
+                "Start update LoRA adapter from tensors. Lora name=%s",
+                obj.lora_name,
+            )
+
+            async with self.lora_update_lock:
+                old_adapter = await self.lora_registry.get_lora_ref(obj.lora_name)
+                if old_adapter is None:
+                    raise ValueError(
+                        f"LoRA adapter {obj.lora_name} is not loaded."
+                    )
+                pinned = bool(old_adapter.pinned)
+                if obj.pinned is not None and bool(obj.pinned) != pinned:
+                    raise ValueError(
+                        "Updating `pinned` is not supported for in-place LoRA updates. "
+                        "Please unload and reload the adapter if this is required."
+                    )
+
+                obj.lora_id = old_adapter.lora_id
+                obj.pinned = pinned
+                return (await self.update_lora_adapter_communicator(obj))[0]
+        except ValueError as e:
+            return UpdateLoRAAdapterFromTensorsReqOutput(
                 success=False,
                 error_message=str(e),
             )

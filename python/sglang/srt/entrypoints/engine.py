@@ -57,6 +57,7 @@ from sglang.srt.managers.io_struct import (
     RpcReqInput,
     RpcReqOutput,
     UnloadLoRAAdapterReqInput,
+    UpdateLoRAAdapterFromTensorsReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromIPCReqInput,
@@ -662,6 +663,28 @@ class Engine(EngineBase):
         )
         return self.loop.run_until_complete(
             self.tokenizer_manager.load_lora_adapter_from_tensors(lora_req, None)
+        )
+
+    def update_lora_adapter_from_tensors(
+        self,
+        lora_name: str,
+        tensors: List[Tuple[str, torch.Tensor]],
+        config_dict: Dict,
+        pinned: Optional[bool] = None,
+        added_tokens_config: Optional[Dict] = None,
+    ):
+        serialized_tensors = MultiprocessingSerializer.serialize(
+            tensors, output_str=True
+        )
+        lora_req = UpdateLoRAAdapterFromTensorsReqInput(
+            lora_name=lora_name,
+            config_dict=config_dict,
+            serialized_tensors=serialized_tensors,
+            pinned=pinned,
+            added_tokens_config=added_tokens_config,
+        )
+        return self.loop.run_until_complete(
+            self.tokenizer_manager.update_lora_adapter_from_tensors(lora_req, None)
         )
 
     def load_lora_adapter(self, lora_name: str, lora_path: str, pinned: bool = False):

@@ -207,6 +207,11 @@ class LoRARegistry:
 
             return unregistered_loras
 
+    async def get_lora_ref(self, lora_name: str) -> Optional[LoRARef]:
+        """Return the registered LoRARef for ``lora_name`` if present."""
+        async with self._registry_lock.reader_lock:
+            return self._registry.get(lora_name)
+
     async def lru_lora_name(self, exclude_pinned=False):
         """
         Returns the least recently used LoRA adapter.

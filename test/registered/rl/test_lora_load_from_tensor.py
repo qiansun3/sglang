@@ -200,6 +200,71 @@ class TestLoRALoadFromTensor(CustomTestCase):
             "Output after applying LoRA does not match expected result",
         )
 
+    def test_lora_update_from_tensor_params(self):
+        print("[Test]Testing LoRA update from tensor params...")
+
+        lora_name = "self_cognition_Alice_update"
+        load_result = self.engine.load_lora_adapter_from_tensors(
+            lora_name=lora_name,
+            tensors=self.lora_tensors,
+            config_dict=self.lora_config_dict,
+        )
+        self.assertTrue(
+            load_result.success,
+            f"Failed to load LoRA from tensors: {load_result.error_message}",
+        )
+
+        output_lora_before_update = self.engine.generate(
+            prompt=[TEST_PROMPT],
+            sampling_params={
+                "max_new_tokens": MAX_NEW_TOKENS,
+                "temperature": 0.0,
+            },
+            lora_path=[lora_name],
+        )
+        self.assertEqual(
+            output_lora_before_update[0]["text"][: len(EXPECTED_OUTPUT)],
+            EXPECTED_OUTPUT,
+            "Output before updating LoRA does not match expected LoRA result",
+        )
+
+        zero_lora_tensors = {
+            name: torch.zeros_like(weight)
+            for name, weight in self.lora_tensors.items()
+        }
+        update_result = self.engine.update_lora_adapter_from_tensors(
+            lora_name=lora_name,
+            tensors=zero_lora_tensors,
+            config_dict=self.lora_config_dict,
+        )
+        self.assertTrue(
+            update_result.success,
+            f"Failed to update LoRA from tensors: {update_result.error_message}",
+        )
+        self.assertIn(
+            lora_name,
+            update_result.loaded_adapters,
+            "Updated LoRA adapter should remain registered under the same name",
+        )
+
+        output_lora_after_update = self.engine.generate(
+            prompt=[TEST_PROMPT],
+            sampling_params={
+                "max_new_tokens": MAX_NEW_TOKENS,
+                "temperature": 0.0,
+            },
+            lora_path=[lora_name],
+        )
+        self.assertEqual(
+            set(update_result.loaded_adapters.keys()),
+            {lora_name},
+            "In-place update should not register any new LoRA adapter",
+        )
+        self.assertTrue(
+            len(output_lora_after_update[0]["text"]) > 0,
+            "Generation after in-place update should succeed",
+        )
+
     def test_lora_logp_diff_with_huggingface(self):
         """
         Test comparing SGLang and HuggingFace LoRA logprobs when loading LoRA from tensors.

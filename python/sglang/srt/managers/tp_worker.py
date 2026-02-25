@@ -31,6 +31,7 @@ from sglang.srt.managers.io_struct import (
     LoadLoRAAdapterReqInput,
     SendWeightsToRemoteInstanceReqInput,
     UnloadLoRAAdapterReqInput,
+    UpdateLoRAAdapterFromTensorsReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromIPCReqInput,
@@ -193,6 +194,18 @@ class BaseTpWorker(ABC):
             tensors,
             recv_req.config_dict,
             recv_req.added_tokens_config,
+        )
+        return result
+
+    def update_lora_adapter_from_tensors(
+        self, recv_req: UpdateLoRAAdapterFromTensorsReqInput
+    ):
+        tensors = MultiprocessingSerializer.deserialize(recv_req.serialized_tensors)
+        result = self.model_runner.update_lora_adapter_from_tensors(
+            lora_ref=recv_req.to_ref(),
+            tensors=tensors,
+            config_dict=recv_req.config_dict,
+            added_tokens_config=recv_req.added_tokens_config,
         )
         return result
 

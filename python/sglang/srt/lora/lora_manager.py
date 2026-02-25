@@ -203,6 +203,7 @@ class LoRAManager:
         ), f"LoRA adapter with ID {lora_ref.lora_id} is not loaded. This should have been verified before request is sent to the backend."
 
         try:
+            self.memory_pool.invalidate_lora(lora_ref.lora_id)
             del self.configs[lora_ref.lora_id]
             del self.loras[lora_ref.lora_id]
             del self.lora_refs[lora_ref.lora_id]
@@ -500,6 +501,8 @@ class LoRAManager:
             self.lora_backend,
         )
         lora_adapter.initialize_weights_from_tensors(tensors)
+        if self.enable_lora_overlap_loading:
+            lora_adapter.pin_weights_in_cpu()
         self.loras[lora_ref.lora_id] = lora_adapter
 
     def load_lora_adapter_from_tensors(
@@ -534,6 +537,83 @@ class LoRAManager:
                 error_message=str(e),
             )
 
+        return self.create_lora_update_result(success=True)
+
+    def update_lora_adapter_from_tensors(
+        self,
+        lora_ref: LoRARef,
+        tensors: Dict[str, torch.Tensor],
+        config_dict: Dict,
+        added_tokens_config: Optional[Dict] = None,
+    ) -> LoRAUpdateOutput:
+        """
+        Update an already loaded LoRA adapter in place from tensors and config dict.
+        """
+        assert lora_ref.lora_id is not None, "lora_id must be provided for updates."
+        assert lora_ref.lora_name is not None, "lora_name must be provided for updates."
+
+        old_config = self.configs.get(lora_ref.lora_id)
+        old_ref = self.lora_refs.get(lora_ref.lora_id)
+        if old_config is None or old_ref is None:
+            return self.create_lora_update_result(
+                success=False,
+                error_message=(
+                    f"LoRA adapter {lora_ref.lora_name} with ID {lora_ref.lora_id} is not loaded."
+                ),
+            )
+        if old_ref.lora_name != lora_ref.lora_name:
+            return self.create_lora_update_result(
+                success=False,
+                error_message=(
+                    f"LoRA name mismatch for update: expected {old_ref.lora_name}, got {lora_ref.lora_name}."
+                ),
+            )
+        if lora_ref.pinned is not None and bool(lora_ref.pinned) != bool(old_ref.pinned):
+            return self.create_lora_update_result(
+                success=False,
+                error_message=(
+                    "Updating `pinned` is not supported for in-place LoRA updates. "
+                    "Please unload and reload the adapter if this is required."
+                ),
+            )
+
+        try:
+            new_config = LoRAConfig.from_dict(config_dict, added_tokens_config)
+            if new_config.lora_added_tokens_size > 0:
+                raise ValueError(
+                    "LoRA serving currently doesn't support adapters that add tokens to the vocabulary"
+                )
+            memory_pool = getattr(self, "memory_pool", None)
+            if memory_pool and not memory_pool.can_support(new_config):
+                raise ValueError(
+                    f"LoRA adapter {lora_ref.lora_name} with rank {new_config.r} is incompatible with the current "
+                    "LoRA memory pool configuration. Please ensure that the LoRA adapter's rank is within the configured "
+                    "`--max-lora-rank` and that the target modules are included in `--lora-target-modules`."
+                )
+
+            # Build a replacement adapter first and swap only after full success.
+            updated_adapter = LoRAAdapter(
+                lora_ref.lora_id,
+                new_config,
+                self.base_hf_config,
+                self.load_config,
+                self.lora_backend,
+            )
+            updated_adapter.initialize_weights_from_tensors(tensors)
+            if self.enable_lora_overlap_loading:
+                updated_adapter.pin_weights_in_cpu()
+        except Exception as e:
+            return self.create_lora_update_result(
+                success=False,
+                error_message=str(e),
+            )
+
+        self.configs[lora_ref.lora_id] = new_config
+        self.loras[lora_ref.lora_id] = updated_adapter
+        # Force this adapter to be reloaded to GPU buffers on next use; otherwise
+        # the memory pool may keep serving stale weights for the same LoRA ID.
+        self.memory_pool.invalidate_lora(lora_ref.lora_id)
+        self.fetch_new_loras({lora_ref.lora_id})
         return self.create_lora_update_result(success=True)
 
     def init_memory_pool(self):

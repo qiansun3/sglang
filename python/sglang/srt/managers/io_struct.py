@@ -1775,9 +1775,29 @@ class LoRAUpdateOutput(BaseReq):
     loaded_adapters: Optional[Dict[str, LoRARef]] = None
 
 
+@dataclass
+class UpdateLoRAAdapterFromTensorsReqInput(BaseReq):
+    lora_name: str
+    config_dict: Dict[str, Any]
+    serialized_tensors: str
+    pinned: Optional[bool] = None
+    added_tokens_config: Optional[Dict[str, Any]] = None
+    lora_id: Optional[str] = None
+
+    def to_ref(self) -> LoRARef:
+        return LoRARef(
+            lora_id=self.lora_id,
+            lora_name=self.lora_name,
+            lora_path="__tensor__",
+            pinned=self.pinned,
+        )
+
+
 LoadLoRAAdapterReqOutput = UnloadLoRAAdapterReqOutput = (
     LoadLoRAAdapterFromTensorsReqOutput
 ) = LoRAUpdateOutput
+
+UpdateLoRAAdapterFromTensorsReqOutput = LoRAUpdateOutput
 
 
 class BlockReqType(Enum):
